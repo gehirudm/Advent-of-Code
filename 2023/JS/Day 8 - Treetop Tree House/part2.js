@@ -1,99 +1,88 @@
 import { readFileSync } from "node:fs";
-const fileContent = readFileSync('./data.txt', { encoding: 'utf-8' });
-const stream = fileContent.trimEnd();
-class Folder {
-    constructor(name, parent) {
-        this.name = name;
-        this.parent = parent;
-        this.children = [];
+class Matrix {
+    constructor(matrix) {
+        this.matrix = matrix;
     }
-    size() {
-        return this.children.map(child => child.size()).reduce((acc, curr) => acc + curr, 0);
+    [Symbol.iterator]() {
+        return new MatrixIterator(this.matrix);
     }
-    push(item) {
-        this.children = [...this.children, item];
+    getRow(index) {
+        return this.matrix[index];
     }
-    toString(level) {
-        let str = "|-".repeat(level) + `📁 ${this.name}\n`;
-        for (const child of this.children) {
-            str += child.toString(level + 1);
+    getCol(index) {
+        return this.matrix.map(row => row[index]);
+    }
+    map(predicate) {
+        let newMattrix = Array.from({ length: this.matrix.length }, (_x, _i) => Array.from({ length: this.getRow(0).length }, (_x, _i) => undefined));
+        for (const [item, _row, _col] of this) {
+            newMattrix[_row][_col] = predicate(this.getRow(_row), this.getCol(_col), _row, _col);
         }
-        return str;
+        return new Matrix(newMattrix);
     }
 }
-class File {
-    constructor(name, _size, parent) {
-        this.name = name;
-        this._size = _size;
-        this.parent = parent;
+class MatrixIterator {
+    constructor(matrix) {
+        this.matrix = matrix;
+        this.row = 0;
+        this.col = 0;
+        this.done = false;
     }
-    size() {
-        return this._size;
-    }
-    toString(level) {
-        let str = "|-".repeat(level) + `📑 ${this.name}\n`;
-        return str;
-    }
-}
-const handleLS = (currentDir, output, foldersFlat) => {
-    const files = output
-        .map(line => {
-        if (line.startsWith("dir")) {
-            const folder = new Folder(line.replace("dir ", ""), currentDir);
-            foldersFlat.push(folder);
-            return folder;
+    next() {
+        if (this.done) {
+            return {
+                value: undefined,
+                done: this.done
+            };
         }
-        else {
-            return new File(line.split(" ")[1], +line.split(" ")[0], currentDir);
-        }
-    });
-    currentDir.children = files;
-};
-const commands = [];
-for (const line of stream.split(/\r\n/)) {
-    if (line.startsWith("$")) {
-        // Command
-        const [command, args] = line.replace("$ ", "").split(" ");
-        commands.push({
-            args,
-            command: command,
-            result: []
-        });
-    }
-    else {
-        commands[commands.length - 1].result.push(line);
-    }
-}
-let cwd = new Folder("/");
-const fileTree = cwd;
-const foldersFlat = [];
-for (const command of commands) {
-    switch (command.command) {
-        case "cd":
-            switch (command.args) {
-                case "/":
-                    break;
-                case "..":
-                    cwd = cwd.parent ?? cwd;
-                    break;
-                default:
-                    cwd = (cwd.children.find(item => item.name == command.args) ?? cwd);
-                    break;
+        const value = this.matrix[this.row][this.col];
+        const currRow = this.row;
+        const currCol = this.col;
+        if (this.col + 1 > (this.matrix[0].length - 1)) {
+            // Check if this is the last element
+            if (this.row == this.matrix.length - 1 && this.col == this.matrix[0].length - 1) {
+                this.done = true;
             }
-            break;
-        case "ls":
-            handleLS(cwd, command.result, foldersFlat);
-            break;
-        default:
-            break;
+            else {
+                // Reset column to 0 and increment row
+                this.col = 0;
+                this.row += 1;
+            }
+        }
+        else
+            this.col += 1;
+        return {
+            value: [value, currRow, currCol],
+            done: false
+        };
     }
 }
-console.log(fileTree.toString(0));
-const TOTAL_SIZE = 70000000;
-const FREE_SIZE = TOTAL_SIZE - fileTree.size();
-const NEED_TO_FREE = 30000000 - FREE_SIZE;
-const smallestFolderToDelete = foldersFlat
-    .sort((a, b) => a.size() - b.size())
-    .filter(folder => folder.size() >= NEED_TO_FREE)
-    .find(() => true);
-console.log(smallestFolderToDelete?.size() ?? 0);
+const mapToScenicScore = (row, col, rowIndex, colIndex) => {
+    const _calculateViewDistance = (arr, item) => {
+        let viewDistance = 0;
+        for (let i = 0; i < arr.length; i++) {
+            const element = arr[i];
+            if (element == item) {
+                viewDistance++;
+                break;
+            }
+            viewDistance++;
+        }
+        return viewDistance;
+    };
+    return _calculateViewDistance(row.slice(0, rowIndex).reverse(), row[rowIndex])
+        * _calculateViewDistance(row.slice(rowIndex + 1), row[rowIndex])
+        * _calculateViewDistance(col.slice(colIndex).reverse(), col[colIndex])
+        * _calculateViewDistance(col.slice(colIndex + 1), col[colIndex]);
+};
+const fileContent = readFileSync('./data.txt', { encoding: 'utf-8' });
+const treeMatrix = new Matrix(fileContent
+    .split(/\r\n/)
+    .map(line => line.split("").map(char => +char)));
+const scoreMatrix = treeMatrix.map(mapToScenicScore);
+console.log(scoreMatrix);
+let highestScore = 0;
+for (const [item, _row, _col] of scoreMatrix) {
+    if (item > highestScore)
+        highestScore = item;
+}
+console.log(highestScore);
